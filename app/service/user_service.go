@@ -88,7 +88,7 @@ func (s *UserService) Create(c *fiber.Ctx) error {
 	req.Username = strings.TrimSpace(req.Username)
 	req.Email = strings.TrimSpace(req.Email)
 
-	if errs := ValidateCreate(req); len(errs) > 0 {
+	if errs := helper.ValidateStruct(req); errs != nil {
 		return helper.Validation(errs)
 	}
 
@@ -133,7 +133,7 @@ func (s *UserService) Replace(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return helper.BadRequest("body harus berupa JSON yang valid")
 	}
-	if errs := ValidateReplace(req); len(errs) > 0 {
+	if errs := helper.ValidateStruct(req); errs != nil {
 		return helper.Validation(errs)
 	}
 
@@ -170,8 +170,12 @@ func (s *UserService) Patch(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return helper.BadRequest("body harus berupa JSON yang valid")
 	}
+	// Urutan penting: body kosong 400, field ada tetapi isinya buruk 422.
 	if IsEmptyPatch(req) {
 		return helper.BadRequest("tidak ada field yang diubah")
+	}
+	if errs := helper.ValidateStruct(req); errs != nil {
+		return helper.Validation(errs)
 	}
 
 	existing, err := s.repo.FindByID(ctx, id)
@@ -179,12 +183,7 @@ func (s *UserService) Patch(c *fiber.Ctx) error {
 		return translateError(err, "user")
 	}
 
-	updated, errs := ApplyPatch(existing, req)
-	if len(errs) > 0 {
-		return helper.Validation(errs)
-	}
-
-	result, err := s.repo.Update(ctx, updated)
+	result, err := s.repo.Update(ctx, ApplyPatch(existing, req))
 	if err != nil {
 		return translateError(err, "user")
 	}

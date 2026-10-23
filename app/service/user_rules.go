@@ -6,66 +6,27 @@ import (
 	"latihan-fiber/app/model"
 )
 
-// File ini berisi business rules MURNI: tidak menyentuh fiber.Ctx,
-// tidak menyentuh database, dan tidak tahu apa pun tentang HTTP.
-
-// ValidateCreate memeriksa isi permintaan pembuatan user.
-// Mengembalikan peta berisi field yang bermasalah; kosong berarti lolos.
-func ValidateCreate(req model.CreateUserRequest) map[string]string {
-	errs := map[string]string{}
-	if strings.TrimSpace(req.Username) == "" {
-		errs["username"] = "wajib diisi"
-	}
-	if !isValidEmail(req.Email) {
-		errs["email"] = "format email tidak valid"
-	}
-	if len(req.Password) < 8 {
-		errs["password"] = "minimal 8 karakter"
-	}
-	return errs
-}
-
-// ValidateReplace memeriksa isi permintaan PUT.
-// Seluruh field wajib ada karena PUT mengganti isi secara keseluruhan.
-func ValidateReplace(req model.ReplaceUserRequest) map[string]string {
-	errs := map[string]string{}
-	if strings.TrimSpace(req.Username) == "" {
-		errs["username"] = "wajib diisi pada PUT"
-	}
-	if !isValidEmail(req.Email) {
-		errs["email"] = "wajib diisi dan berformat email pada PUT"
-	}
-	return errs
-}
-
-// ApplyPatch menyalin field yang dikirim ke data yang sudah ada.
-// Field yang bernilai nil dibiarkan apa adanya.
-func ApplyPatch(
-	current model.User, req model.PatchUserRequest,
-) (model.User, map[string]string) {
-	errs := map[string]string{}
-
+// ApplyPatch menggabungkan field yang dikirim ke data yang sudah ada.
+// Pemeriksaan bentuk sudah dikerjakan tag sebelum fungsi ini dipanggil,
+// jadi tugasnya tinggal satu: menggabungkan.
+func ApplyPatch(current model.User, req model.PatchUserRequest) model.User {
 	if req.Username != nil {
-		if strings.TrimSpace(*req.Username) == "" {
-			errs["username"] = "tidak boleh kosong"
-		} else {
-			current.Username = *req.Username
-		}
+		current.Username = strings.TrimSpace(*req.Username)
 	}
 	if req.Email != nil {
-		if !isValidEmail(*req.Email) {
-			errs["email"] = "format email tidak valid"
-		} else {
-			current.Email = *req.Email
-		}
+		current.Email = strings.TrimSpace(*req.Email)
 	}
 	if req.IsActive != nil {
 		current.IsActive = *req.IsActive
 	}
-	return current, errs
+	return current
 }
 
-// IsEmptyPatch menandai permintaan PATCH yang tidak mengubah apa pun.
+// IsEmptyPatch memeriksa body PATCH yang tidak berisi field apa pun.
+//
+// Aturan ini tidak dapat ditulis sebagai tag: tag memeriksa satu field
+// pada satu waktu, sedangkan aturan ini berbicara tentang HUBUNGAN antar
+// field (setidaknya satu di antara mereka harus ada).
 func IsEmptyPatch(req model.PatchUserRequest) bool {
 	return req.Username == nil && req.Email == nil && req.IsActive == nil
 }
@@ -76,13 +37,4 @@ func CountTotalPages(total, limit int) int {
 		return 0
 	}
 	return (total + limit - 1) / limit
-}
-
-// isValidEmail adalah pemeriksaan sederhana, bukan validasi RFC.
-// Pemeriksaan yang sungguh-sungguh dibahas pada pertemuan 7.
-func isValidEmail(email string) bool {
-	email = strings.TrimSpace(email)
-	at := strings.Index(email, "@")
-	dot := strings.LastIndex(email, ".")
-	return at > 0 && dot > at+1 && dot < len(email)-1
 }

@@ -28,11 +28,8 @@ func TestApplyPatch(t *testing.T) {
 	initial := model.User{ID: 1, Username: "sari", Email: "sari@mail.com", IsActive: true}
 	inactive := false
 
-	result, errs := ApplyPatch(initial, model.PatchUserRequest{IsActive: &inactive})
+	result := ApplyPatch(initial, model.PatchUserRequest{IsActive: &inactive})
 
-	if len(errs) != 0 {
-		t.Fatalf("tidak seharusnya ada error: %v", errs)
-	}
 	if result.IsActive {
 		t.Error("is_active seharusnya berubah menjadi false")
 	}
