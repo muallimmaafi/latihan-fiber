@@ -77,10 +77,17 @@ func (s *UserService) Create(c *fiber.Ctx) error {
 		return helper.FailValidation(c, errs)
 	}
 
+	// Password di-hash sebelum menyentuh database, sama seperti di Register.
+	hashed, err := helper.HashPassword(req.Password)
+	if err != nil {
+		return helper.Fail(c, fiber.StatusInternalServerError, "gagal memproses password")
+	}
+
 	newUser, err := s.repo.Create(ctx, model.User{
 		Username: req.Username,
 		Email:    req.Email,
-		Password: req.Password,
+		Password: hashed,
+		Role:     "user",
 		IsActive: true,
 	})
 	if err != nil {
