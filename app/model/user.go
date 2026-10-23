@@ -64,3 +64,8 @@ type ListQuery struct {
 func (q ListQuery) Offset() int {
 	return (q.Page - 1) * q.Limit
 }
+
+// AssignRoleRequest dipakai endpoint PATCH /users/:id/role.
+type AssignRoleRequest struct {
+	Role string `json:"role"`
+}

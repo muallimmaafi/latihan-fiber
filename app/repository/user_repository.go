@@ -27,6 +27,7 @@ type UserRepository interface {
 	FindByUsername(ctx context.Context, username string) (model.User, error)
 	Create(ctx context.Context, u model.User) (model.User, error)
 	Update(ctx context.Context, u model.User) (model.User, error)
+	UpdateRole(ctx context.Context, id int, role string) (model.User, error)
 	Delete(ctx context.Context, id int) error
 }
 
@@ -187,8 +188,8 @@ func (r *userPostgresRepository) Update(
 ) (model.User, error) {
 	// RETURNING mengembalikan baris hasil perubahan dalam satu perjalanan,
 	// sehingga field yang tidak ikut diubah (created_at, role) tetap terisi benar.
-	// Role sengaja TIDAK diubah di sini: mengatur hak akses baru dibahas
-	// pada pertemuan 6.
+	// Role sengaja TIDAK diubah di sini: mengubah role punya jalur tersendiri
+	// (UpdateRole) yang dijaga permission role:assign.
 	err := r.pool.QueryRow(ctx,
 		`UPDATE users SET username = $1, email = $2, is_active = $3
 		 WHERE id = $4
@@ -205,6 +206,28 @@ func (r *userPostgresRepository) Update(
 			return model.User{}, ErrDuplicate
 		}
 		return model.User{}, fmt.Errorf("memperbarui user: %w", err)
+	}
+	return u, nil
+}
+
+// UpdateRole sengaja dipisah dari Update. Mengubah role adalah tindakan
+// istimewa yang dijaga permission tersendiri, sehingga tidak boleh ikut
+// terbawa oleh endpoint perubahan data biasa.
+func (r *userPostgresRepository) UpdateRole(
+	ctx context.Context, id int, role string,
+) (model.User, error) {
+	var u model.User
+	err := r.pool.QueryRow(ctx,
+		`UPDATE users SET role = $1 WHERE id = $2
+		 RETURNING id, username, email, password, role, is_active, created_at`,
+		role, id,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
+		&u.IsActive, &u.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.User{}, ErrNotFound
+		}
+		return model.User{}, fmt.Errorf("mengubah role user: %w", err)
 	}
 	return u, nil
 }
@@ -228,6 +251,6 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		return pgErr.Code == "23505"
-	}
+			}
 	return false
 }
