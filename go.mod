@@ -6,6 +6,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.15
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
+	golang.org/x/crypto v0.14.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
