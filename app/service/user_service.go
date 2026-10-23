@@ -33,6 +33,14 @@ func (s *UserService) List(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
 
+	// Format dipilih SEBELUM query dijalankan. Bila client meminta format
+	// yang tidak dapat kita hasilkan, tidak ada gunanya membebani database
+	// untuk hasil yang akan dibuang.
+	format, err := helper.Negotiate(c, helper.FormatJSON, helper.FormatCSV)
+	if err != nil {
+		return err
+	}
+
 	q, err := helper.ParseCursorQuery(c)
 	if err != nil {
 		return err
@@ -43,11 +51,15 @@ func (s *UserService) List(c *fiber.Ctx) error {
 		return helper.Internal(err)
 	}
 
-	// Baris tambahan hasil limit+1 dipotong di sini. Ia hanya penanda bahwa
-	// masih ada halaman berikutnya, bukan bagian dari halaman ini.
+	// Baris tambahan hasil limit+1 dipotong SEBELUM format dipilih, supaya
+	// CSV dan JSON memuat jumlah baris yang sama.
 	hasMore := len(rows) > q.Limit
 	if hasMore {
 		rows = rows[:q.Limit]
+	}
+
+	if format == helper.FormatCSV {
+		return helper.WriteUsersCSV(c, rows)
 	}
 
 	meta := &model.CursorMeta{Limit: q.Limit, HasMore: hasMore}
@@ -55,7 +67,6 @@ func (s *UserService) List(c *fiber.Ctx) error {
 		last := rows[len(rows)-1]
 		meta.NextCursor = helper.EncodeCursor(last.CreatedAt, last.ID)
 	}
-
 	return helper.SuccessCursor(c, "daftar user berhasil diambil", rows, meta)
 }
 
