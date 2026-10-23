@@ -33,18 +33,30 @@ func (s *UserService) List(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
 
-	q := helper.ParseListQuery(c)
-	users, total, err := s.repo.FindAll(ctx, q)
+	q, err := helper.ParseCursorQuery(c)
+	if err != nil {
+		return err
+	}
+
+	rows, err := s.repo.FindAfterCursor(ctx, q)
 	if err != nil {
 		return helper.Internal(err)
 	}
 
-	return helper.SuccessList(c, "daftar user berhasil diambil", users, &model.Meta{
-		Page:       q.Page,
-		Limit:      q.Limit,
-		Total:      total,
-		TotalPages: CountTotalPages(total, q.Limit),
-	})
+	// Baris tambahan hasil limit+1 dipotong di sini. Ia hanya penanda bahwa
+	// masih ada halaman berikutnya, bukan bagian dari halaman ini.
+	hasMore := len(rows) > q.Limit
+	if hasMore {
+		rows = rows[:q.Limit]
+	}
+
+	meta := &model.CursorMeta{Limit: q.Limit, HasMore: hasMore}
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		meta.NextCursor = helper.EncodeCursor(last.CreatedAt, last.ID)
+	}
+
+	return helper.SuccessCursor(c, "daftar user berhasil diambil", rows, meta)
 }
 
 // ---------- GET /users/:id ----------
