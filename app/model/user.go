@@ -12,25 +12,21 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// POST — semua field wajib
 type CreateUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required,min=3,max=30,alphanum"`
+	Email    string `json:"email" validate:"required,email,max=120"`
+	Password string `json:"password" validate:"required,min=8,max=72,nospace"`
 }
 
-// PUT — ganti seluruh isi, jadi field bertipe biasa dan semuanya wajib
 type ReplaceUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	Username string `json:"username" validate:"required,min=3,max=30,alphanum"`
+	Email    string `json:"email" validate:"required,email,max=120"`
 	IsActive bool   `json:"is_active"`
 }
 
-// PATCH — ubah sebagian, jadi field bertipe pointer supaya bisa dibedakan
-// antara "tidak dikirim" (nil) dan "dikirim bernilai kosong"
 type PatchUserRequest struct {
-	Username *string `json:"username,omitempty"`
-	Email    *string `json:"email,omitempty"`
+	Username *string `json:"username,omitempty" validate:"omitnil,min=3,max=30,alphanum"`
+	Email    *string `json:"email,omitempty" validate:"omitnil,email,max=120"`
 	IsActive *bool   `json:"is_active,omitempty"`
 }
 
