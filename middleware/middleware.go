@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -46,18 +47,35 @@ func RequestLogger(logger *slog.Logger) fiber.Handler {
 		err := c.Next()
 
 		requestID, _ := c.Locals("requestid").(string)
+
+		// Sejak handler mengembalikan error alih-alih menulis response
+		// sendiri, status pada c.Response() BELUM terisi di titik ini:
+		// ErrorHandler baru berjalan setelah seluruh rangkaian middleware
+		// selesai. Tanpa koreksi ini, setiap kegagalan tercatat sebagai 200.
+		status := c.Response().StatusCode()
+		if err != nil {
+			var appErr *helper.AppError
+			var fiberErr *fiber.Error
+			switch {
+			case errors.As(err, &appErr):
+				status = appErr.Status
+			case errors.As(err, &fiberErr):
+				status = fiberErr.Code
+			default:
+				status = fiber.StatusInternalServerError
+			}
+		}
+
 		attrs := []any{
 			slog.String("request_id", requestID),
 			slog.String("method", c.Method()),
 			slog.String("path", c.Path()),
-			slog.Int("status", c.Response().StatusCode()),
+			slog.Int("status", status),
 			slog.Duration("duration", time.Since(start)),
 			slog.String("ip", c.IP()),
 		}
 
 		// Identitas ikut dicatat bila request sudah melewati RequireAuth.
-		// Tanpa ini, log sebuah 403 tidak berguna: kita tahu ada yang
-		// ditolak, tetapi tidak tahu siapa dan mengapa.
 		if user, ok := helper.CurrentUser(c); ok {
 			attrs = append(attrs,
 				slog.Int("user_id", user.UserID),
