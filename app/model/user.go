@@ -74,3 +74,27 @@ type ErrorResponse struct {
 	Fields    map[string]string `json:"fields,omitempty"`
 	RequestID string            `json:"request_id,omitempty"`
 }
+
+// Cursor adalah penanda posisi pada keyset pagination.
+type Cursor struct {
+	CreatedAt time.Time
+	ID        int
+}
+
+// CursorQuery adalah parameter daftar user yang memakai cursor.
+type CursorQuery struct {
+	Limit    int
+	Search   string
+	IsActive *bool
+	After    *Cursor
+}
+
+// CursorMeta menggantikan Meta pada endpoint yang memakai cursor.
+//
+// Tidak ada Total dan TotalPages: keduanya tidak dapat disediakan tanpa
+// COUNT(*) atas seluruh tabel, persis biaya yang ingin dihindari cursor.
+type CursorMeta struct {
+	Limit      int    `json:"limit"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    bool   `json:"has_more"`
+}
