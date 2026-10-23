@@ -112,3 +112,11 @@ func Internal(cause error) *AppError {
 		Message: "terjadi kesalahan pada server", cause: cause,
 	}
 }
+
+// NewError dipakai bila sebuah kegagalan butuh kode yang lebih spesifik
+// daripada kode umum, misalnya COURSE_FULL alih-alih CONFLICT. Client dapat
+// menampilkan pesan berbeda untuk "kelas penuh" dan "sudah terdaftar",
+// padahal keduanya sama-sama 409.
+func NewError(status int, code, message string) *AppError {
+	return &AppError{Status: status, Code: code, Message: message}
+}
