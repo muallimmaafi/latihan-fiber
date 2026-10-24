@@ -43,9 +43,38 @@ var client = &http.Client{
 	},
 }
 
+// samples menyimpan contoh pesan pertama untuk tiap label, supaya penyebab
+// sebuah hasil yang membingungkan (misalnya 404) dapat dibedakan.
+var samples sync.Map
+
 func fatal(msg string) {
 	fmt.Fprintln(os.Stderr, "GAGAL:", msg)
 	os.Exit(1)
+}
+
+// isInvalid menandai hasil yang tidak mungkin berasal dari logika pendaftaran:
+// request ditolak sebelum sampai ke sana (salah alamat, tanpa izin, salah
+// bentuk, atau tidak tersambung). 409 sengaja TIDAK termasuk: itu penolakan
+// aturan bisnis yang sah.
+func isInvalid(label string) bool {
+	if label == "ERR timeout" {
+		return false // temuan, bukan uji tidak sah
+	}
+	if strings.HasPrefix(label, "ERR") {
+		return true
+	}
+	for _, p := range []string{"400", "401", "403", "404", "405", "415", "422"} {
+		if strings.HasPrefix(label, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// isServerFailure menandai kegagalan sisi server. Menurut spesifikasi,
+// 5xx dan timeout tidak boleh muncul pada uji yang wajar.
+func isServerFailure(label string) bool {
+	return label == "ERR timeout" || strings.HasPrefix(label, "5")
 }
 
 func main() {
@@ -79,8 +108,10 @@ func main() {
 	if err != nil {
 		fatal(err.Error())
 	}
+	need(students, 1)
 
 	ensureServer(*baseURL)
+	probeRoute(*mode, *baseURL, students[0].Token)
 
 	if *doReset {
 		if err := resetState(ctx, pool); err != nil {
@@ -99,6 +130,54 @@ func main() {
 		runSwap(ctx, pool, *baseURL, students)
 	default:
 		fatal("mode tidak dikenal: " + *mode)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Pemeriksaan sebelum uji
+// ---------------------------------------------------------------------
+
+// ensureServer memastikan server benar-benar menjawab sebelum uji dimulai.
+// Tanpa ini, seluruh request gagal koneksi dan hasilnya tampak "konsisten"
+// hanya karena tidak ada satu pun yang sampai ke database.
+func ensureServer(base string) {
+	resp, err := client.Get(base + "/health")
+	if err != nil {
+		fatal("server tidak menjawab di " + base +
+			"; jalankan `go run .` di terminal lain lebih dulu")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fatal(fmt.Sprintf("health check mengembalikan %d, bukan 200", resp.StatusCode))
+	}
+}
+
+// probeRoute memastikan alamat yang akan diserang benar-benar dilayani
+// aplikasi. Permintaan diarahkan ke id kelas yang tidak ada, sehingga aman:
+// tidak mengubah data apa pun. Bila route-nya ada, jawabannya "kelas tidak
+// ditemukan"; bila tidak ada, "endpoint tidak ditemukan".
+func probeRoute(mode, base, token string) {
+	target := enrollURL(base, 999999)
+	var body any
+	if mode == "swap" {
+		target = base + "/enrollments/swap"
+		body = map[string]int{"from_course_id": 999998, "to_course_id": 999999}
+	}
+
+	r, err := send("POST", target, token, body)
+	if err != nil {
+		fatal("pemeriksaan route: " + err.Error())
+	}
+	fmt.Printf("pemeriksaan route POST %s -> %d %s (%s)\n",
+		target, r.Status, r.Code, r.Message)
+
+	if r.Status == http.StatusUnauthorized {
+		fatal("token alat uji ditolak server; JWT_SECRET atau JWT_ISSUER " +
+			"alat uji berbeda dari yang dipakai server")
+	}
+	if r.Message == "endpoint tidak ditemukan" {
+		fatal("route tidak ada di server yang berjalan. Server kemungkinan masih " +
+			"memakai kode lama: hentikan, lalu jalankan ulang `go run .`")
 	}
 }
 
@@ -139,19 +218,25 @@ func fire(n int, job func(i int) string) map[string]int {
 	return tally
 }
 
-// call mengirim satu request dan meringkas hasilnya menjadi satu label.
-func call(method, url, token string, body any) string {
+type reply struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+// send mengirim satu request dan membaca kode serta pesan dari body-nya.
+func send(method, url, token string, body any) (reply, error) {
 	var reader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return "ERR body"
+			return reply{}, fmt.Errorf("body: %w", err)
 		}
 		reader = bytes.NewReader(b)
 	}
 	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
-		return "ERR request"
+		return reply{}, fmt.Errorf("request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	// RequireJSON mewajibkan Content-Type JSON pada POST/PUT/PATCH,
@@ -160,46 +245,90 @@ func call(method, url, token string, body any) string {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "Timeout") || strings.Contains(msg, "deadline") {
-			return "ERR timeout"
-		}
-		return "ERR koneksi"
+		return reply{}, err
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return fmt.Sprintf("%d OK", resp.StatusCode)
-	}
 	var e struct {
-		Code string `json:"code"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
 	}
 	_ = json.Unmarshal(data, &e)
-	if e.Code != "" {
-		return fmt.Sprintf("%d %s", resp.StatusCode, e.Code)
-	}
-	return fmt.Sprint(resp.StatusCode)
+	return reply{Status: resp.StatusCode, Code: e.Code, Message: e.Message}, nil
 }
 
-func printTally(tally map[string]int, elapsed time.Duration) {
+// call mengirim satu request dan meringkas hasilnya menjadi satu label.
+func call(method, url, token string, body any) string {
+	r, err := send(method, url, token, body)
+	if err != nil {
+		msg := err.Error()
+		switch {
+		case strings.HasPrefix(msg, "body:"), strings.HasPrefix(msg, "request:"):
+			samples.LoadOrStore("ERR request", msg)
+			return "ERR request"
+		case strings.Contains(msg, "Timeout"), strings.Contains(msg, "deadline"):
+			samples.LoadOrStore("ERR timeout", msg)
+			return "ERR timeout"
+		default:
+			samples.LoadOrStore("ERR koneksi", msg)
+			return "ERR koneksi"
+		}
+	}
+
+	if r.Status >= 200 && r.Status < 300 {
+		return fmt.Sprintf("%d OK", r.Status)
+	}
+	if r.Code != "" {
+		label := fmt.Sprintf("%d %s", r.Status, r.Code)
+		samples.LoadOrStore(label, r.Message)
+		return label
+	}
+	return fmt.Sprint(r.Status)
+}
+
+// printTally mencetak hasil dan mengembalikan false bila ada request yang
+// tidak sah, sehingga pemanggil menolak menampilkan vonis konsistensi.
+func printTally(tally map[string]int, elapsed time.Duration) bool {
 	keys := make([]string, 0, len(tally))
 	for k := range tally {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	invalid := 0
+	invalid, serverFail := 0, 0
 	fmt.Println("hasil request:")
 	for _, k := range keys {
 		fmt.Printf("  %-28s %d\n", k, tally[k])
-		if strings.HasPrefix(k, "ERR") {
+		if isInvalid(k) {
 			invalid += tally[k]
+		}
+		if isServerFailure(k) {
+			serverFail += tally[k]
+		}
+		if isInvalid(k) || isServerFailure(k) {
+			if msg, ok := samples.Load(k); ok {
+				fmt.Printf("    contoh pesan: %v\n", msg)
+			}
 		}
 	}
 	fmt.Printf("waktu total : %dms\n", elapsed.Milliseconds())
+
+	if serverFail > 0 {
+		fmt.Printf("TEMUAN: %d request berakhir 5xx atau timeout; pada kode yang benar ini tidak boleh terjadi\n",
+			serverFail)
+	}
 	if invalid > 0 {
-		fmt.Printf("PERINGATAN: %d request gagal tanpa sampai ke aplikasi; hasil uji ini TIDAK SAH\n", invalid)
+		fmt.Printf("PERINGATAN: %d request tidak sampai ke logika pendaftaran; hasil uji ini TIDAK SAH\n",
+			invalid)
+		return false
+	}
+	return true
+}
+
+func requireValid(ok bool) {
+	if !ok {
+		fatal("uji tidak sah, vonis konsistensi tidak ditampilkan")
 	}
 }
 
@@ -211,9 +340,20 @@ func runSerial(ctx context.Context, pool *pgxpool.Pool, base string, st []studen
 	need(st, 7)
 	ids := mustCourseIDs(ctx, pool, "IF399")
 	fmt.Println("7 mahasiswa mendaftar ke IF399 satu per satu...")
+
+	invalid := 0
 	for i := 0; i < 7; i++ {
 		label := call("POST", enrollURL(base, ids["IF399"]), st[i].Token, nil)
 		fmt.Printf("  %s -> %s\n", st[i].Username, label)
+		if isInvalid(label) {
+			invalid++
+			if msg, ok := samples.Load(label); ok {
+				fmt.Printf("    contoh pesan: %v\n", msg)
+			}
+		}
+	}
+	if invalid > 0 {
+		fatal(fmt.Sprintf("%d request tidak sampai ke logika pendaftaran; uji tidak sah", invalid))
 	}
 	checkCourse(ctx, pool, "IF399")
 }
@@ -227,7 +367,7 @@ func runCrowd(ctx context.Context, pool *pgxpool.Pool, base string, st []student
 	tally := fire(60, func(i int) string {
 		return call("POST", enrollURL(base, ids["IF399"]), st[i].Token, nil)
 	})
-	printTally(tally, time.Since(begin))
+	requireValid(printTally(tally, time.Since(begin)))
 	checkCourse(ctx, pool, "IF399")
 }
 
@@ -245,7 +385,7 @@ func runCredits(ctx context.Context, pool *pgxpool.Pool, base string, st []stude
 		s := st[i/len(codes)]
 		return call("POST", enrollURL(base, ids[codes[i%len(codes)]]), s.Token, nil)
 	})
-	printTally(tally, time.Since(begin))
+	requireValid(printTally(tally, time.Since(begin)))
 	checkCredits(ctx, pool, 10)
 }
 
@@ -292,7 +432,7 @@ func runSwap(ctx context.Context, pool *pgxpool.Pool, base string, st []student)
 	time.Sleep(1500 * time.Millisecond)
 	after := deadlocks(ctx, pool)
 
-	printTally(tally, elapsed)
+	requireValid(printTally(tally, elapsed))
 	fmt.Printf("deadlock terdeteksi PostgreSQL selama uji: %d\n", after-before)
 	checkCourse(ctx, pool, "IF101")
 	checkCourse(ctx, pool, "IF102")
@@ -445,19 +585,4 @@ func checkCredits(ctx context.Context, pool *pgxpool.Pool, studentCount int) {
 	fmt.Printf("seluruh %d mahasiswa <= %d SKS? pelanggar=%d -> %s\n",
 		studentCount, maxCredits, violators, verdict)
 	fmt.Printf("kelas dengan enrolled_count tidak cocok: %d\n", mismatched)
-}
-
-// ensureServer memastikan server benar-benar menjawab sebelum uji dimulai.
-// Tanpa ini, seluruh request gagal koneksi dan hasilnya tampak "konsisten"
-// hanya karena tidak ada satu pun yang sampai ke database.
-func ensureServer(base string) {
-	resp, err := client.Get(base + "/health")
-	if err != nil {
-		fatal("server tidak menjawab di " + base +
-			"; jalankan `go run .` di terminal lain lebih dulu")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fatal(fmt.Sprintf("health check mengembalikan %d, bukan 200", resp.StatusCode))
-	}
 }
