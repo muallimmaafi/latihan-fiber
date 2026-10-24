@@ -80,6 +80,8 @@ func main() {
 		fatal(err.Error())
 	}
 
+	ensureServer(*baseURL)
+
 	if *doReset {
 		if err := resetState(ctx, pool); err != nil {
 			fatal("reset: " + err.Error())
@@ -186,11 +188,19 @@ func printTally(tally map[string]int, elapsed time.Duration) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+
+	invalid := 0
 	fmt.Println("hasil request:")
 	for _, k := range keys {
 		fmt.Printf("  %-28s %d\n", k, tally[k])
+		if strings.HasPrefix(k, "ERR") {
+			invalid += tally[k]
+		}
 	}
 	fmt.Printf("waktu total : %dms\n", elapsed.Milliseconds())
+	if invalid > 0 {
+		fmt.Printf("PERINGATAN: %d request gagal tanpa sampai ke aplikasi; hasil uji ini TIDAK SAH\n", invalid)
+	}
 }
 
 // ---------------------------------------------------------------------
@@ -435,4 +445,19 @@ func checkCredits(ctx context.Context, pool *pgxpool.Pool, studentCount int) {
 	fmt.Printf("seluruh %d mahasiswa <= %d SKS? pelanggar=%d -> %s\n",
 		studentCount, maxCredits, violators, verdict)
 	fmt.Printf("kelas dengan enrolled_count tidak cocok: %d\n", mismatched)
+}
+
+// ensureServer memastikan server benar-benar menjawab sebelum uji dimulai.
+// Tanpa ini, seluruh request gagal koneksi dan hasilnya tampak "konsisten"
+// hanya karena tidak ada satu pun yang sampai ke database.
+func ensureServer(base string) {
+	resp, err := client.Get(base + "/health")
+	if err != nil {
+		fatal("server tidak menjawab di " + base +
+			"; jalankan `go run .` di terminal lain lebih dulu")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fatal(fmt.Sprintf("health check mengembalikan %d, bukan 200", resp.StatusCode))
+	}
 }
