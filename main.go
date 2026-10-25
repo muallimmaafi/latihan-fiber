@@ -89,6 +89,7 @@ func main() {
 		time.Duration(config.GetEnvInt("JWT_REFRESH_TTL_DAYS", 7))*24*time.Hour,
 	)
 	courseService := service.NewCourseService(courseRepository, txManager)
+	reviewService := service.NewReviewService(reviewRepository, courseRepository, permissions)
 
 	app := config.NewApp(logger, route.Dependencies{
 		Pool:          pool,
@@ -98,6 +99,7 @@ func main() {
 		UserService:   userService,
 		AuthService:   authService,
 		CourseService: courseService,
+		ReviewService: reviewService,
 	})
 
 	port := config.GetEnv("APP_PORT", "3000")
