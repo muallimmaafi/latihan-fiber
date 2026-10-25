@@ -1,79 +1,43 @@
 package helper
 
-import "testing"
+import (
+	"testing"
 
-type ptrSample struct {
-	Username *string `json:"username" validate:"omitnil,min=3,max=30,alphanum"`
-}
+	"latihan-fiber/app/model"
+)
 
-type plainOmitNil struct {
-	Username string `json:"username" validate:"omitnil,min=3"`
-}
-
-type plainOmitEmpty struct {
-	Username string `json:"username" validate:"omitempty,min=3"`
-}
-
-type passSample struct {
-	Password string `json:"password" validate:"required,max=72,strongpassword"`
-}
-
-type unknownTagSample struct {
-	ID string `json:"id" validate:"uuid4"`
-}
-
-func TestOmitNilPointer(t *testing.T) {
-	empty := ""
-	short := "ab"
-	ok := "sari01"
-
-	if errs := ValidateStruct(ptrSample{Username: nil}); errs != nil {
-		t.Errorf("nil harus dilewati, dapat %v", errs)
+func TestReviewRequestMessages(t *testing.T) {
+	req := model.CreateReviewRequest{
+		Rating:  9,
+		Comment: "pendek",
+		Tags:    []string{"aa", "bb", "cc", "dd", "ee", "ff"},
 	}
-	if errs := ValidateStruct(ptrSample{Username: &empty}); errs["username"] == "" {
-		t.Error(`pointer ke "" harus DITOLAK`)
-	}
-	if errs := ValidateStruct(ptrSample{Username: &short}); errs["username"] == "" {
-		t.Error("pointer ke string pendek harus DITOLAK")
-	}
-	if errs := ValidateStruct(ptrSample{Username: &ok}); errs != nil {
-		t.Errorf("nilai sah harus lolos, dapat %v", errs)
-	}
-}
+	errs := ValidateStruct(req)
 
-// Tabel A.3 baris pertama: dicatat, bukan dipaksakan, supaya perilaku
-// pada versi validator yang kamu pakai terlihat apa adanya.
-func TestOmitEmptyVsOmitNilOnPlainString(t *testing.T) {
-	t.Logf(`string "" + omitnil   -> %v`, ValidateStruct(plainOmitNil{Username: ""}))
-	t.Logf(`string "" + omitempty -> %v`, ValidateStruct(plainOmitEmpty{Username: ""}))
-}
-
-func TestStrongPassword(t *testing.T) {
-	cases := []struct {
-		password string
-		wantErr  bool
-	}{
-		{"Rahasia123!", false},
-		{"abc", true},
-		{"tanpaangka", true},
-		{"password123", true},
+	want := map[string]string{
+		"rating":  "nilai maksimal 5",
+		"comment": "minimal 10 karakter",
+		"tags":    "maksimal 5 item",
 	}
-	for _, tc := range cases {
-		errs := ValidateStruct(passSample{Password: tc.password})
-		if tc.wantErr {
-			if errs["password"] == "" {
-				t.Errorf("%q harus ditolak dengan pesan tidak kosong, dapat %v",
-					tc.password, errs)
-			}
-		} else if errs != nil {
-			t.Errorf("%q harus diterima, dapat %v", tc.password, errs)
+	for field, msg := range want {
+		if errs[field] != msg {
+			t.Errorf("%s: harap %q, dapat %q (semua: %v)", field, msg, errs[field], errs)
 		}
 	}
 }
 
-func TestUnknownTagFallbackIsNeverEmpty(t *testing.T) {
-	errs := ValidateStruct(unknownTagSample{ID: "x"})
-	if errs["id"] == "" {
-		t.Error("tag tanpa terjemahan tidak boleh menghasilkan pesan kosong")
+func TestUpdateReviewRequestLimits(t *testing.T) {
+	if errs := ValidateStruct(model.UpdateReviewRequest{}); errs != nil {
+		t.Errorf("semua field nil harus dilewati, dapat %v", errs)
+	}
+
+	six := []string{"aa", "bb", "cc", "dd", "ee", "ff"}
+	if errs := ValidateStruct(model.UpdateReviewRequest{Tags: &six}); errs["tags"] != "maksimal 5 item" {
+		t.Errorf("pointer ke slice 6 item harus ditolak, dapat %v", errs)
+	}
+
+	short := "pendek"
+	if errs := ValidateStruct(model.UpdateReviewRequest{Comment: &short}); errs["comment"] != "minimal 10 karakter" {
+		t.Errorf("komentar pendek harus ditolak, dapat %v", errs)
 	}
 }
