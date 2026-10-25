@@ -52,6 +52,8 @@ func main() {
 		_ = mongoClient.Disconnect(ctx)
 	}()
 
+	mongoDB := mongoClient.Database(config.GetEnv("MONGO_DATABASE", "latihan_fiber"))
+
 	jwtManager := helper.NewJWTManager(
 		jwtSecret,
 		config.GetEnv("JWT_ISSUER", "praktikum-backend"),
@@ -63,6 +65,12 @@ func main() {
 	roleRepository := repository.NewRoleRepository(pool)
 	courseRepository := repository.NewCourseRepository(pool)
 	txManager := repository.NewTxManager(pool)
+
+	reviewRepository := repository.NewReviewRepository(mongoDB)
+	if err := reviewRepository.EnsureIndexes(context.Background()); err != nil {
+		logger.Error("gagal membuat index MongoDB", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	// Pemetaan role ke permission dibaca SEKALI saat aplikasi menyala.
 	// Konsekuensinya: perubahan hak akses di database baru berlaku setelah
