@@ -1,91 +1,120 @@
-package route
+package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
-
+	"latihan-fiber/app/repository"
 	"latihan-fiber/app/service"
+	"latihan-fiber/config"
+	"latihan-fiber/database"
 	"latihan-fiber/helper"
-	"latihan-fiber/middleware"
+	"latihan-fiber/route"
 )
 
-// Dependencies mengumpulkan semua yang dibutuhkan route, supaya
-// penambahan service berikutnya tidak mengubah tanda tangan Register.
-type Dependencies struct {
-	Pool          *pgxpool.Pool
-	JWT           *helper.JWTManager
-	Permissions   *helper.PermissionSet
-	UserService   *service.UserService
-	AuthService   *service.AuthService
-	CourseService *service.CourseService
-}
+const minSecretLength = 32
 
-func Register(app *fiber.App, deps Dependencies) {
-	api := app.Group("/api/v1")
+func main() {
+	config.LoadEnv()
+	logger := config.NewLogger()
 
-	// --- publik ---
-	api.Get("/health", healthCheck(deps.Pool))
-
-	// --- autentikasi ---
-	auth := api.Group("/auth", middleware.RequireJSON)
-	auth.Post("/register", deps.AuthService.Register)
-	auth.Post("/login", middleware.LoginRateLimiter(), deps.AuthService.Login)
-	auth.Post("/refresh", deps.AuthService.Refresh)
-	auth.Post("/logout", deps.AuthService.Logout)
-	auth.Get("/me", middleware.RequireAuth(deps.JWT), deps.AuthService.Me)
-
-	// --- wajib login, hak akses diperiksa per endpoint ---
-	users := api.Group("/users",
-		middleware.RequireJSON,
-		middleware.RequireAuth(deps.JWT))
-
-	perms := deps.Permissions
-
-	// Hak dapat diputuskan tanpa melihat data -> middleware.
-	users.Get("/",
-		middleware.RequirePermission(perms, "user:list"),
-		deps.UserService.List)
-	users.Post("/",
-		middleware.RequirePermission(perms, "user:update:any"),
-		deps.UserService.Create)
-	users.Delete("/:id",
-		middleware.RequirePermission(perms, "user:delete"),
-		deps.UserService.Delete)
-	users.Patch("/:id/role",
-		middleware.RequirePermission(perms, "role:assign"),
-		deps.UserService.AssignRole)
-
-	// Hak bergantung pada kepemilikan data -> diperiksa di service.
-	// Tetap melewati RequireAuth karena berada di dalam group users.
-	users.Get("/:id", deps.UserService.Get)
-	users.Put("/:id", deps.UserService.Replace)
-	users.Patch("/:id", deps.UserService.Patch)
-
-	// --- kelas dan KRS ---
-	courses := api.Group("/courses",
-		middleware.RequireJSON,
-		middleware.RequireAuth(deps.JWT))
-
-	// "/mine" didaftarkan SEBELUM "/:id". Fiber mencocokkan route sesuai
-	// urutan pendaftaran; bila dibalik, "mine" akan dianggap sebagai :id.
-	courses.Get("/", deps.CourseService.List)
-	courses.Get("/mine", deps.CourseService.Mine)
-	courses.Get("/:id", deps.CourseService.Get)
-	courses.Delete("/:id/enroll", deps.CourseService.Drop)
-}
-
-// healthCheck melaporkan kondisi layanan beserta databasenya.
-func healthCheck(pool *pgxpool.Pool) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
-		defer cancel()
-
-		if err := pool.Ping(ctx); err != nil {
-			return helper.ServiceUnavailable("database tidak dapat dihubungi")
-		}
-		return helper.Success(c, fiber.StatusOK, "server dan database berjalan", nil)
+	// Rahasia diperiksa SEBELUM server menyala. Lebih baik gagal seketika
+	// daripada berjalan dengan token yang mudah dipalsukan.
+	jwtSecret := config.GetEnv("JWT_SECRET", "")
+	if len(jwtSecret) < minSecretLength {
+		logger.Error("JWT_SECRET tidak diisi atau terlalu pendek",
+			slog.Int("minimal_karakter", minSecretLength))
+		os.Exit(1)
 	}
+
+	pool, err := database.NewPool(context.Background())
+	if err != nil {
+		logger.Error("gagal terhubung ke database", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	mongoClient, err := database.NewMongoClient(context.Background())
+	if err != nil {
+		logger.Error("gagal terhubung ke MongoDB", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	// Disconnect menutup seluruh koneksi di pool milik driver. Diberi batas
+	// waktu sendiri, karena context milik request sudah tidak berlaku saat
+	// aplikasi berhenti.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mongoClient.Disconnect(ctx)
+	}()
+
+	jwtManager := helper.NewJWTManager(
+		jwtSecret,
+		config.GetEnv("JWT_ISSUER", "praktikum-backend"),
+		time.Duration(config.GetEnvInt("JWT_ACCESS_TTL_MINUTES", 15))*time.Minute,
+	)
+
+	userRepository := repository.NewUserRepository(pool)
+	tokenRepository := repository.NewTokenRepository(pool)
+	roleRepository := repository.NewRoleRepository(pool)
+	courseRepository := repository.NewCourseRepository(pool)
+	txManager := repository.NewTxManager(pool)
+
+	// Pemetaan role ke permission dibaca SEKALI saat aplikasi menyala.
+	// Konsekuensinya: perubahan hak akses di database baru berlaku setelah
+	// aplikasi dijalankan ulang. Itu keputusan sadar, bukan kelalaian.
+	rawPermissions, err := roleRepository.LoadPermissions(context.Background())
+	if err != nil {
+		logger.Error("gagal memuat permission", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	permissions := helper.NewPermissionSet(rawPermissions)
+	logger.Info("permission dimuat", slog.Any("roles", permissions.KnownRoles()))
+
+	userService := service.NewUserService(userRepository, permissions)
+	authService := service.NewAuthService(
+		userRepository, tokenRepository, jwtManager, permissions,
+		time.Duration(config.GetEnvInt("JWT_REFRESH_TTL_DAYS", 7))*24*time.Hour,
+	)
+	courseService := service.NewCourseService(courseRepository, txManager)
+
+	app := config.NewApp(logger, route.Dependencies{
+		Pool:          pool,
+		Mongo:         mongoClient,
+		JWT:           jwtManager,
+		Permissions:   permissions,
+		UserService:   userService,
+		AuthService:   authService,
+		CourseService: courseService,
+	})
+
+	port := config.GetEnv("APP_PORT", "3000")
+	go func() {
+		if err := app.Listen(":" + port); err != nil {
+			logger.Error("server berhenti", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}()
+	logger.Info("server berjalan", slog.String("port", port))
+
+	// Graceful shutdown: tunggu Ctrl+C, lalu beri waktu request
+	// yang sedang berjalan untuk selesai.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("sinyal berhenti diterima, menutup server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := app.ShutdownWithContext(ctx); err != nil {
+		logger.Error("gagal menutup server dengan rapi",
+			slog.String("error", err.Error()))
+	}
+	logger.Info("server berhenti dengan rapi")
 }
