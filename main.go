@@ -52,6 +52,15 @@ func main() {
 		_ = mongoClient.Disconnect(ctx)
 	}()
 
+	redisClient, err := database.NewRedisClient(context.Background())
+	if err != nil {
+		logger.Error("gagal terhubung ke Redis", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer redisClient.Close()
+
+	logger.Info("Redis berhasil terhubung")
+
 	mongoDB := mongoClient.Database(config.GetEnv("MONGO_DATABASE", "latihan_fiber"))
 
 	jwtManager := helper.NewJWTManager(
