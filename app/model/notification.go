@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	EventEnrollmentCreated = "enrollment.created"
-	EventEnrollmentDropped = "enrollment.dropped"
-	EventEnrollmentSwapped = "enrollment.swapped"
+	EventEnrollmentCreated  = "enrollment.created"
+	EventEnrollmentDropped  = "enrollment.dropped"
+	EventEnrollmentSwapped  = "enrollment.swapped"
+	EventCourseQuotaChanged = "course.quota_changed"
 )
 
 const (
@@ -23,6 +24,13 @@ type EnrollmentEvent struct {
 	CourseName     string `json:"course_name"`
 	FromCourseCode string `json:"from_course_code,omitempty"`
 	FromCourseName string `json:"from_course_name,omitempty"`
+}
+
+type CourseQuotaChangedEvent struct {
+	CourseID   int    `json:"course_id"`
+	CourseCode string `json:"course_code"`
+	CourseName string `json:"course_name"`
+	NewQuota   int    `json:"new_quota"`
 }
 
 type OutboxEvent struct {

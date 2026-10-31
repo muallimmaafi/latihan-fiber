@@ -1,2 +1,4 @@
 .env
 logs/
+dump.rdb
+redeliver.exe

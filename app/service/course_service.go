@@ -1,4 +1,3 @@
-
 package service
 
 import (
@@ -87,6 +86,74 @@ func (s *CourseService) Get(c *fiber.Ctx) error {
 		return translateCourseError(err)
 	}
 	return helper.Success(c, fiber.StatusOK, "kelas ditemukan", course)
+}
+
+// ---------- PATCH /courses/:id ----------
+func (s *CourseService) UpdateQuota(c *fiber.Ctx) error {
+	ctx, cancel := helper.RequestContext(c)
+	defer cancel()
+
+	id, valid := helper.ParamID(c)
+	if !valid {
+		return helper.BadRequest("id harus berupa angka positif")
+	}
+
+	var req struct {
+		Quota int `json:"quota"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return helper.BadRequest("format request tidak valid")
+	}
+
+	if req.Quota <= 0 {
+		return helper.BadRequest("kuota harus lebih dari 0")
+	}
+
+	var updated model.Course
+
+	err := s.tx.WithTx(ctx, func(tx repository.DBTX) error {
+		repo := s.courses.WithTx(tx)
+
+		current, err := repo.FindByID(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		if req.Quota < current.EnrolledCount {
+			return errors.New("kuota tidak boleh lebih kecil dari jumlah peserta")
+		}
+
+		updated, err = repo.UpdateQuota(ctx, id, req.Quota)
+		if err != nil {
+			return err
+		}
+
+		return s.outbox.WithTx(tx).Insert(
+			ctx,
+			model.EventCourseQuotaChanged,
+			model.CourseQuotaChangedEvent{
+				CourseID:   updated.ID,
+				CourseCode: updated.Code,
+				CourseName: updated.Name,
+				NewQuota:   updated.Quota,
+			},
+		)
+	})
+
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return helper.NotFound("kelas tidak ditemukan")
+		}
+		return helper.Internal(err)
+	}
+
+	return helper.Success(
+		c,
+		fiber.StatusOK,
+		"kuota kelas berhasil diperbarui",
+		updated,
+	)
 }
 
 // ---------- POST /courses/:id/enroll ----------

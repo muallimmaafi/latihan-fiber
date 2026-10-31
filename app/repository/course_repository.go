@@ -22,7 +22,9 @@ type CourseRepository interface {
 
 	FindAll(ctx context.Context) ([]model.Course, error)
 	FindByID(ctx context.Context, id int) (model.Course, error)
+	UpdateQuota(ctx context.Context, id, quota int) (model.Course, error)
 	FindByStudent(ctx context.Context, userID int) ([]model.Course, error)
+	FindParticipants(ctx context.Context, courseID int) ([]model.User, error)
 	IsEnrolled(ctx context.Context, courseID, userID int) (bool, error)
 
 	LockStudent(ctx context.Context, userID int) error
@@ -89,6 +91,25 @@ func (r *coursePostgresRepository) FindByID(ctx context.Context, id int) (model.
 	return c, nil
 }
 
+func (r *coursePostgresRepository) UpdateQuota(
+    ctx context.Context, id, quota int,
+) (model.Course, error) {
+    c, err := scanCourse(r.db.QueryRow(ctx,
+        `UPDATE courses
+         SET quota = $1
+         WHERE id = $2
+         RETURNING `+courseColumns, quota, id))
+
+    if err != nil {
+        if errors.Is(err, pgx.ErrNoRows) {
+            return model.Course{}, ErrNotFound
+        }
+        return model.Course{}, fmt.Errorf("mengubah kuota kelas: %w", err)
+    }
+
+    return c, nil
+}
+
 func (r *coursePostgresRepository) FindByStudent(
 	ctx context.Context, userID int,
 ) ([]model.Course, error) {
@@ -99,6 +120,37 @@ func (r *coursePostgresRepository) FindByStudent(
 		 JOIN enrollments e ON e.course_id = c.id
 		 WHERE e.user_id = $1
 		 ORDER BY c.code`, userID))
+}
+
+func (r *coursePostgresRepository) FindParticipants(
+    ctx context.Context, courseID int,
+) ([]model.User, error) {
+    rows, err := r.db.Query(ctx,
+        `SELECT u.id, u.username, u.email, u.password,
+                u.role, u.is_active, u.created_at
+         FROM users u
+         JOIN enrollments e ON e.user_id = u.id
+         WHERE e.course_id = $1
+         ORDER BY u.id`, courseID)
+    if err != nil {
+        return nil, fmt.Errorf("mengambil peserta kelas: %w", err)
+    }
+    defer rows.Close()
+
+    participants := []model.User{}
+    for rows.Next() {
+        u, err := scanUser(rows)
+        if err != nil {
+            return nil, fmt.Errorf("membaca data peserta: %w", err)
+        }
+        participants = append(participants, u)
+    }
+
+    if err := rows.Err(); err != nil {
+        return nil, fmt.Errorf("membaca daftar peserta: %w", err)
+    }
+
+    return participants, nil
 }
 
 // LockStudent mengunci row milik satu mahasiswa sampai transaction selesai.

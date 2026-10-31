@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -51,6 +50,7 @@ func startWorker(
 
 	worker := service.NewNotificationWorker(
 		repository.NewUserRepository(pool),
+		repository.NewCourseRepository(pool),
 		repository.NewNotificationRepository(pool),
 		txManager,
 		mailer,

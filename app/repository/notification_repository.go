@@ -1,4 +1,3 @@
-
 package repository
 
 import (
@@ -34,8 +33,8 @@ func (r *notificationPostgresRepository) WithTx(tx DBTX) NotificationRepository 
 	return &notificationPostgresRepository{db: tx}
 }
 
-// Claim menggunakan ON CONFLICT DO NOTHING agar task duplikat
-// tidak menyebabkan notifikasi tercatat atau terkirim berulang.
+// Claim menggunakan kombinasi outbox_id, user_id, dan channel
+// agar satu event dapat menghasilkan notifikasi untuk banyak user.
 func (r *notificationPostgresRepository) Claim(
 	ctx context.Context,
 	n model.Notification,
@@ -43,11 +42,11 @@ func (r *notificationPostgresRepository) Claim(
 	var id int64
 
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO notifications (outbox_id, user_id, channel, subject, body)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (outbox_id) DO NOTHING
-		RETURNING id
-	`,
+    INSERT INTO notifications (outbox_id, user_id, channel, subject, body)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (outbox_id, user_id, channel) DO NOTHING
+    RETURNING id
+`,
 		n.OutboxID,
 		n.UserID,
 		n.Channel,

@@ -61,3 +61,25 @@ func BuildMessage(
 		Body:    body,
 	}, nil
 }
+
+// BuildQuotaChangedMessage menyusun pesan perubahan kuota kelas.
+func BuildQuotaChangedMessage(
+	e model.CourseQuotaChangedEvent,
+	user model.User,
+) model.Message {
+	course := e.CourseCode + " " + e.CourseName
+
+	subject := "Perubahan kuota kelas " + course
+	body := fmt.Sprintf(
+		"Halo %s, kuota kelas %s telah diperbarui menjadi %d peserta.",
+		user.Username,
+		course,
+		e.NewQuota,
+	)
+
+	return model.Message{
+		To:      user.Email,
+		Subject: subject,
+		Body:    body,
+	}
+}
