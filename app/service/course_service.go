@@ -1,3 +1,4 @@
+
 package service
 
 import (
@@ -17,13 +18,20 @@ var errCreditLimit = errors.New("batas SKS terlampaui")
 
 type CourseService struct {
 	courses repository.CourseRepository
+	outbox  repository.OutboxRepository
 	tx      *repository.TxManager
 }
 
 func NewCourseService(
-	courses repository.CourseRepository, tx *repository.TxManager,
+	courses repository.CourseRepository,
+	outbox repository.OutboxRepository,
+	tx *repository.TxManager,
 ) *CourseService {
-	return &CourseService{courses: courses, tx: tx}
+	return &CourseService{
+		courses: courses,
+		outbox:  outbox,
+		tx:      tx,
+	}
 }
 
 // ---------- GET /courses ----------
@@ -97,41 +105,45 @@ func (s *CourseService) Enroll(c *fiber.Ctx) error {
 
 	var enrolled model.Course
 	err := s.tx.WithTx(ctx, func(tx repository.DBTX) error {
-		// Seluruh query di bawah ini WAJIB memakai repo, bukan s.courses.
-		// s.courses terikat pada pool: query lewat s.courses berjalan di
-		// luar transaction dan tidak ikut dibatalkan bila langkah
-		// berikutnya gagal.
 		repo := s.courses.WithTx(tx)
 
-		// 1. Kunci KRS milik mahasiswa ini. Request lain dari mahasiswa
-		// yang SAMA harus menunggu sampai transaction ini selesai.
 		if err := repo.LockStudent(ctx, current.UserID); err != nil {
 			return err
 		}
 
-		// 2. Periksa batas SKS. Aman, karena tidak ada request lain milik
-		// mahasiswa ini yang dapat menambah SKS di antara pemeriksaan
-		// dan penyimpanan.
 		course, err := repo.FindByID(ctx, courseID)
 		if err != nil {
 			return err
 		}
+
 		taken, err := repo.SumCredits(ctx, current.UserID)
 		if err != nil {
 			return err
 		}
+
 		if !WithinCreditLimit(taken, course.Credits) {
 			return errCreditLimit
 		}
 
-		// 3. Ambil satu kursi secara atomik.
 		enrolled, err = repo.IncrementEnrolled(ctx, courseID)
 		if err != nil {
 			return err
 		}
 
-		// 4. Catat pendaftarannya. Bila ternyata sudah terdaftar, error
-		// di sini membatalkan juga penambahan kursi pada langkah 3.
+		// Catat event dalam transaction yang sama.
+		if err := s.outbox.WithTx(tx).Insert(
+			ctx,
+			model.EventEnrollmentCreated,
+			model.EnrollmentEvent{
+				UserID:     current.UserID,
+				CourseID:   enrolled.ID,
+				CourseCode: enrolled.Code,
+				CourseName: enrolled.Name,
+			},
+		); err != nil {
+			return err
+		}
+
 		return repo.InsertEnrollment(ctx, courseID, current.UserID)
 	})
 	if err != nil {
@@ -162,24 +174,153 @@ func (s *CourseService) Drop(c *fiber.Ctx) error {
 		if err := repo.LockStudent(ctx, current.UserID); err != nil {
 			return err
 		}
+
 		if err := repo.DeleteEnrollment(ctx, courseID, current.UserID); err != nil {
 			return err
 		}
-		_, err := repo.DecrementEnrolled(ctx, courseID)
-		return err
+
+		course, err := repo.DecrementEnrolled(ctx, courseID)
+		if err != nil {
+			return err
+		}
+
+		// Event yang benar untuk penghapusan KRS adalah enrollment.dropped.
+		// Event disimpan dalam transaction yang sama agar ikut rollback
+		// jika proses penghapusan KRS gagal.
+		return s.outbox.WithTx(tx).Insert(
+			ctx,
+			model.EventEnrollmentDropped,
+			model.EnrollmentEvent{
+				UserID:     current.UserID,
+				CourseID:   course.ID,
+				CourseCode: course.Code,
+				CourseName: course.Name,
+			},
+		)
 	})
 	if err != nil {
 		return translateCourseError(err)
 	}
+
 	return helper.NoContent(c)
 }
 
+// ---------- POST /courses/swap ----------
+func (s *CourseService) Swap(c *fiber.Ctx) error {
+	ctx, cancel := helper.RequestContext(c)
+	defer cancel()
+
+	current, ok := helper.CurrentUser(c)
+	if !ok {
+		return helper.Unauthorized("belum terautentikasi")
+	}
+
+	var req struct {
+		FromCourseID int `json:"from_course_id"`
+		ToCourseID   int `json:"to_course_id"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return helper.BadRequest("format request tidak valid")
+	}
+
+	if req.FromCourseID <= 0 || req.ToCourseID <= 0 {
+		return helper.BadRequest("id kelas harus berupa angka positif")
+	}
+
+	if req.FromCourseID == req.ToCourseID {
+		return helper.BadRequest("kelas asal dan tujuan tidak boleh sama")
+	}
+
+	var joined model.Course
+
+	err := s.tx.WithTx(ctx, func(tx repository.DBTX) error {
+		repo := s.courses.WithTx(tx)
+
+		// 1. Kunci KRS mahasiswa.
+		if err := repo.LockStudent(ctx, current.UserID); err != nil {
+			return err
+		}
+
+		// 2. Ambil data kelas asal dan tujuan.
+		from, err := repo.FindByID(ctx, req.FromCourseID)
+		if err != nil {
+			return err
+		}
+
+		to, err := repo.FindByID(ctx, req.ToCourseID)
+		if err != nil {
+			return err
+		}
+
+		// 3. Pastikan mahasiswa terdaftar di kelas asal.
+		enrolled, err := repo.IsEnrolled(ctx, req.FromCourseID, current.UserID)
+		if err != nil {
+			return err
+		}
+		if !enrolled {
+			return repository.ErrNotEnrolled
+		}
+
+		// 4. Periksa batas SKS setelah perpindahan.
+		taken, err := repo.SumCredits(ctx, current.UserID)
+		if err != nil {
+			return err
+		}
+
+		if !WithinCreditLimit(taken-from.Credits, to.Credits) {
+			return errCreditLimit
+		}
+
+		// 5. Kurangi peserta kelas asal.
+		if _, err := repo.DecrementEnrolled(ctx, req.FromCourseID); err != nil {
+			return err
+		}
+
+		// 6. Hapus pendaftaran kelas asal.
+		if err := repo.DeleteEnrollment(ctx, req.FromCourseID, current.UserID); err != nil {
+			return err
+		}
+
+		// 7. Ambil kursi kelas tujuan secara atomik.
+		joined, err = repo.IncrementEnrolled(ctx, req.ToCourseID)
+		if err != nil {
+			return err
+		}
+
+		// 8. Simpan pendaftaran kelas tujuan.
+		if err := repo.InsertEnrollment(ctx, req.ToCourseID, current.UserID); err != nil {
+			return err
+		}
+
+		// 9. Catat satu event perpindahan kelas ke outbox.
+		return s.outbox.WithTx(tx).Insert(
+			ctx,
+			model.EventEnrollmentSwapped,
+			model.EnrollmentEvent{
+				UserID:         current.UserID,
+				CourseID:       to.ID,
+				CourseCode:     to.Code,
+				CourseName:     to.Name,
+				FromCourseCode: from.Code,
+				FromCourseName: from.Name,
+			},
+		)
+	})
+
+	if err != nil {
+		return translateCourseError(err)
+	}
+
+	return helper.Success(
+		c,
+		fiber.StatusOK,
+		"berhasil berpindah kelas",
+		joined,
+	)
+}
+
 // translateCourseError memetakan kegagalan ke response.
-//
-// Seluruh kegagalan aturan bisnis memakai 409 dengan kode yang berbeda:
-// permintaannya sah, tetapi keadaan data saat ini tidak mengizinkan.
-// Yang tidak dikenali menjadi 500, termasuk pelanggaran CHECK constraint,
-// karena constraint itu hanya terpicu bila kode kita sendiri yang salah.
 func translateCourseError(err error) error {
 	switch {
 	case errors.Is(err, repository.ErrNotFound):

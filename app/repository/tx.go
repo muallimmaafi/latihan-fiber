@@ -52,6 +52,19 @@ func (m *TxManager) WithTx(ctx context.Context, fn func(tx DBTX) error) error {
 	return err
 }
 
+
+// WithTxOnce menjalankan transaction satu kali tanpa retry.
+//
+// Digunakan ketika fungsi transaction melakukan tindakan di luar database,
+// seperti mengirim email. Retry otomatis dapat menyebabkan tindakan
+// eksternal tersebut dilakukan berulang kali.
+func (m *TxManager) WithTxOnce(
+	ctx context.Context,
+	fn func(tx DBTX) error,
+) error {
+	return m.runOnce(ctx, fn)
+}
+
 func (m *TxManager) runOnce(ctx context.Context, fn func(tx DBTX) error) error {
 	tx, err := m.pool.Begin(ctx)
 	if err != nil {

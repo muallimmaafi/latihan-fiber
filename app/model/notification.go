@@ -1,4 +1,3 @@
-
 package model
 
 import (
@@ -53,4 +52,27 @@ type Notification struct {
 	Subject  string    `json:"subject"`
 	Body     string    `json:"body"`
 	SentAt   time.Time `json:"sent_at"`
+}
+
+// QueueStats adalah ringkasan keadaan untuk admin.
+type QueueStats struct {
+	OutboxPending     int        `json:"outbox_pending"`
+	OutboxPublished   int        `json:"outbox_published"`
+	OldestPendingAge  string     `json:"oldest_pending_age"`
+	NotificationsSent int        `json:"notifications_sent"`
+	Queue             *QueueInfo `json:"queue"`
+	QueueError        string     `json:"queue_error,omitempty"`
+}
+
+// QueueInfo adalah salinan sebagian informasi queue dari Asynq.
+type QueueInfo struct {
+	Name      string `json:"name"`
+	Pending   int    `json:"pending"`
+	Active    int    `json:"active"`
+	Scheduled int    `json:"scheduled"`
+	Retry     int    `json:"retry"`
+	Archived  int    `json:"archived"`
+	Completed int    `json:"completed"`
+	Processed int    `json:"processed_today"`
+	Failed    int    `json:"failed_today"`
 }
