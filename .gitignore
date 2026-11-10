@@ -2,3 +2,4 @@
 logs/
 dump.rdb
 redeliver.exe
+.env.test
