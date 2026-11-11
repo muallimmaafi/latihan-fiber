@@ -34,7 +34,16 @@ func NewNotificationService(
 }
 
 // ---------- GET /notifications/mine ----------
-
+// Mine godoc
+// @Summary Mendapatkan notifikasi pengguna
+// @Description Mengambil maksimal 20 notifikasi milik pengguna yang sedang login.
+// @Tags Notifications
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Notifikasi berhasil diambil"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /notifications/mine [get]
 func (s *NotificationService) Mine(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -53,7 +62,17 @@ func (s *NotificationService) Mine(c *fiber.Ctx) error {
 }
 
 // ---------- GET /admin/queue ----------
-
+// Monitor godoc
+// @Summary Memantau status queue dan notifikasi
+// @Description Mengambil statistik outbox, jumlah notifikasi terkirim, serta status antrean Redis dan Asynq.
+// @Tags Admin
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Statistik queue berhasil diambil"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki permission queue:monitor"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /admin/queue [get]
 func (s *NotificationService) Monitor(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()

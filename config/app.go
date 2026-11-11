@@ -1,3 +1,4 @@
+
 package config
 
 import (
@@ -5,11 +6,13 @@ import (
 	"log/slog"
 
 	"github.com/gofiber/fiber/v2"
+	fiberSwagger "github.com/gofiber/swagger"
 
 	"latihan-fiber/app/model"
 	"latihan-fiber/helper"
 	"latihan-fiber/middleware"
 	"latihan-fiber/route"
+	_ "latihan-fiber/docs"
 )
 
 // NewApp merakit aplikasi: membuat instance Fiber, memasang middleware,
@@ -26,8 +29,10 @@ func NewApp(logger *slog.Logger, deps route.Dependencies) *fiber.App {
 	middleware.Register(app, logger, GetEnv("ALLOWED_ORIGINS", ""))
 	route.Register(app, deps)
 
-	// Penampung terakhir untuk URL yang tidak dikenal. Ikut melewati
-	// ErrorHandler yang sama dengan kegagalan lainnya.
+	// Dokumentasi Swagger.
+	app.Get("/swagger/*", fiberSwagger.HandlerDefault)
+
+	// Penampung terakhir untuk URL yang tidak dikenal.
 	app.Use(func(c *fiber.Ctx) error {
 		return helper.NotFound("endpoint tidak ditemukan")
 	})
@@ -57,22 +62,15 @@ func newErrorHandler(logger *slog.Logger) fiber.ErrorHandler {
 			}
 
 		case errors.As(err, &fiberErr):
-			// Kegagalan bawaan Fiber, misalnya 405 atau 404 dari router.
 			appErr = &helper.AppError{
 				Status: fiberErr.Code, Code: "HTTP_ERROR",
 				Message: fiberErr.Message,
 			}
 
 		default:
-			// Kegagalan yang tidak kita duga.
 			appErr = helper.Internal(err)
 		}
 
-		// Tingkat log ditentukan oleh SIAPA yang salah, bukan seberapa
-		// mengganggu kegagalannya. 4xx adalah kesalahan pemakai API (WARN);
-		// hanya 5xx yang berarti sistem kita rusak (ERROR). Bila tertukar,
-		// pemantauan berteriak setiap ada yang salah ketik URL dan diam
-		// ketika database benar-benar mati.
 		if appErr.Status >= fiber.StatusInternalServerError {
 			logger.Error("request_failed",
 				slog.String("request_id", requestID),

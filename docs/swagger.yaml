@@ -1,0 +1,1428 @@
+basePath: /api/v1
+definitions:
+  model.AssignRoleRequest:
+    properties:
+      role:
+        type: string
+    type: object
+  model.CreateReviewRequest:
+    properties:
+      comment:
+        maxLength: 1000
+        minLength: 10
+        type: string
+      rating:
+        maximum: 5
+        minimum: 1
+        type: integer
+      tags:
+        items:
+          type: string
+        maxItems: 5
+        type: array
+    required:
+    - comment
+    - rating
+    type: object
+  model.CreateUserRequest:
+    properties:
+      email:
+        maxLength: 120
+        type: string
+      password:
+        maxLength: 72
+        minLength: 8
+        type: string
+      username:
+        maxLength: 30
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  model.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  model.PatchUserRequest:
+    properties:
+      email:
+        maxLength: 120
+        type: string
+      is_active:
+        type: boolean
+      username:
+        maxLength: 30
+        minLength: 3
+        type: string
+    type: object
+  model.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  model.RegisterRequest:
+    properties:
+      email:
+        maxLength: 120
+        type: string
+      password:
+        maxLength: 72
+        type: string
+      username:
+        maxLength: 30
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  model.ReplaceUserRequest:
+    properties:
+      email:
+        maxLength: 120
+        type: string
+      is_active:
+        type: boolean
+      username:
+        maxLength: 30
+        minLength: 3
+        type: string
+    required:
+    - email
+    - username
+    type: object
+  model.ReplyRequest:
+    properties:
+      body:
+        maxLength: 500
+        minLength: 2
+        type: string
+    required:
+    - body
+    type: object
+  model.UpdateReviewRequest:
+    properties:
+      comment:
+        maxLength: 1000
+        minLength: 10
+        type: string
+      rating:
+        maximum: 5
+        minimum: 1
+        type: integer
+      tags:
+        items:
+          type: string
+        maxItems: 5
+        type: array
+    type: object
+host: localhost:3000
+info:
+  contact: {}
+  description: Dokumentasi REST API untuk sistem pengelolaan mahasiswa, kelas, KRS,
+    ulasan, dan notifikasi.
+  title: Praktikum Backend Lanjut API
+  version: "1.0"
+paths:
+  /admin/queue:
+    get:
+      description: Mengambil statistik outbox, jumlah notifikasi terkirim, serta status
+        antrean Redis dan Asynq.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Statistik queue berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki permission queue:monitor
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Memantau status queue dan notifikasi
+      tags:
+      - Admin
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Memverifikasi username dan password, kemudian menghasilkan access
+        token dan refresh token.
+      parameters:
+      - description: Kredensial login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login berhasil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Username atau password salah
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akun dinonaktifkan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login pengguna
+      tags:
+      - Authentication
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Mengakhiri sesi pengguna dengan mencabut refresh token.
+      parameters:
+      - description: Refresh token yang akan dicabut
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Logout berhasil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Logout pengguna
+      tags:
+      - Authentication
+  /auth/me:
+    get:
+      description: Mengambil informasi profil dan daftar permission pengguna yang
+        sedang login.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profil berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi atau user tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan profil pengguna
+      tags:
+      - Authentication
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Memperbarui access token dan refresh token menggunakan refresh
+        token yang masih valid. Refresh token lama akan dicabut.
+      parameters:
+      - description: Refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Refresh token tidak valid atau kedaluwarsa
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Memperbarui token
+      tags:
+      - Authentication
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Mendaftarkan pengguna baru. Role otomatis ditetapkan sebagai user.
+      parameters:
+      - description: Data registrasi pengguna
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Pendaftaran berhasil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Username atau email sudah digunakan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Registrasi pengguna
+      tags:
+      - Authentication
+  /courses/:
+    get:
+      description: Mengambil seluruh daftar kelas yang tersedia.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar kelas berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan daftar kelas
+      tags:
+      - Courses
+  /courses/{id}:
+    get:
+      description: Mengambil detail kelas berdasarkan ID kelas.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail kelas berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID kelas tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kelas tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan detail kelas
+      tags:
+      - Courses
+    patch:
+      consumes:
+      - application/json
+      description: Mengubah kuota kelas berdasarkan ID. Kuota baru tidak boleh lebih
+        kecil dari jumlah peserta yang sudah terdaftar.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 'Kuota baru, contoh: {\'
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties:
+            type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Kuota kelas berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID atau kuota tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki permission course:update
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kelas tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Memperbarui kuota kelas
+      tags:
+      - Courses
+  /courses/{id}/enroll:
+    delete:
+      description: Menghapus pendaftaran kelas mahasiswa yang sedang login dan memperbarui
+        jumlah peserta.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Pendaftaran kelas berhasil dibatalkan
+        "400":
+          description: ID kelas tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kelas tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Mahasiswa tidak terdaftar di kelas
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Membatalkan pendaftaran kelas
+      tags:
+      - Courses
+    post:
+      description: Mendaftarkan mahasiswa yang sedang login ke kelas berdasarkan ID.
+        Sistem memeriksa kuota kelas dan batas maksimal SKS.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Berhasil mendaftar kelas
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID kelas tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kelas tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Kuota penuh, sudah terdaftar, atau batas maksimal SKS terlampaui
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendaftar ke kelas
+      tags:
+      - Courses
+  /courses/{id}/reviews:
+    get:
+      description: Mengambil daftar ulasan berdasarkan ID kelas dengan dukungan filter
+        tag dan pagination.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Filter berdasarkan tag ulasan
+        in: query
+        name: tag
+        type: string
+      - description: ID ulasan sebagai penanda pagination
+        in: query
+        name: before
+        type: string
+      - default: 10
+        description: Jumlah ulasan per halaman (1-50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar ulasan berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID kelas tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan daftar ulasan kelas
+      tags:
+      - Reviews
+    post:
+      consumes:
+      - application/json
+      description: Membuat ulasan untuk kelas yang diikuti oleh mahasiswa yang sedang
+        login.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Data ulasan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Ulasan berhasil disimpan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID kelas atau body tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Mahasiswa bukan peserta kelas
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kelas tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Mahasiswa sudah pernah memberikan ulasan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Membuat ulasan kelas
+      tags:
+      - Reviews
+  /courses/{id}/reviews/summary:
+    get:
+      description: Mengambil ringkasan ulasan berdasarkan ID kelas, termasuk informasi
+        rating.
+      parameters:
+      - description: ID kelas
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ringkasan ulasan berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID kelas tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Kelas tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan ringkasan ulasan kelas
+      tags:
+      - Reviews
+  /courses/mine:
+    get:
+      description: Mengambil daftar kelas yang diikuti mahasiswa yang sedang login,
+        termasuk total SKS dan batas maksimal SKS.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Daftar KRS berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan daftar KRS mahasiswa
+      tags:
+      - Courses
+  /health:
+    get:
+      description: Memeriksa status server, PostgreSQL, dan MongoDB.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Server dan database berjalan
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Database tidak tersedia
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health Check
+      tags:
+      - Health
+  /notifications/mine:
+    get:
+      description: Mengambil maksimal 20 notifikasi milik pengguna yang sedang login.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Notifikasi berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan notifikasi pengguna
+      tags:
+      - Notifications
+  /reviews/{id}:
+    delete:
+      description: Menghapus ulasan milik sendiri atau ulasan pengguna lain jika memiliki
+        permission review:moderate.
+      parameters:
+      - description: ID ulasan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Ulasan berhasil dihapus
+        "400":
+          description: ID ulasan tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki izin menghapus ulasan
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Ulasan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Menghapus ulasan
+      tags:
+      - Reviews
+    get:
+      description: Mengambil detail ulasan berdasarkan ID ulasan.
+      parameters:
+      - description: ID ulasan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ulasan berhasil ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID ulasan tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Ulasan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan detail ulasan
+      tags:
+      - Reviews
+    patch:
+      consumes:
+      - application/json
+      description: Memperbarui rating, komentar, atau tag pada ulasan milik mahasiswa
+        yang sedang login.
+      parameters:
+      - description: ID ulasan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data ulasan yang akan diperbarui
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.UpdateReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ulasan berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID atau body tidak valid, atau tidak ada field yang diubah
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Bukan pemilik ulasan
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Ulasan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Konflik pembaruan ulasan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Memperbarui ulasan
+      tags:
+      - Reviews
+  /reviews/{id}/helpful:
+    post:
+      description: Memberikan penilaian bahwa ulasan bermanfaat. Setiap pengguna hanya
+        dapat memberikan satu penilaian pada ulasan yang sama.
+      parameters:
+      - description: ID ulasan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Penilaian berhasil diberikan
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Ulasan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Pengguna sudah memberikan penilaian atau mencoba menilai ulasannya
+            sendiri
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Memberikan penilaian helpful pada ulasan
+      tags:
+      - Reviews
+  /reviews/{id}/replies:
+    post:
+      consumes:
+      - application/json
+      description: Menambahkan balasan pada ulasan berdasarkan ID ulasan.
+      parameters:
+      - description: ID ulasan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Isi balasan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ReplyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Balasan berhasil ditambahkan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID ulasan atau body tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Ulasan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Batas jumlah balasan tercapai
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Menambahkan balasan ulasan
+      tags:
+      - Reviews
+  /users/:
+    get:
+      consumes:
+      - application/json
+      description: Mengambil daftar pengguna dengan pencarian, filter status aktif,
+        dan cursor pagination. Mendukung format JSON dan CSV.
+      parameters:
+      - description: Jumlah data per halaman (default 10, maksimal 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Kata kunci pencarian pengguna
+        in: query
+        name: search
+        type: string
+      - description: Filter status aktif pengguna
+        in: query
+        name: is_active
+        type: boolean
+      - description: Cursor untuk mengambil halaman berikutnya
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      - text/csv
+      responses:
+        "200":
+          description: Daftar pengguna berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Parameter query tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki permission user:list
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan daftar pengguna
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      description: Membuat akun pengguna baru dengan role default user.
+      parameters:
+      - description: Data pengguna baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Pengguna berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Body JSON tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Username sudah digunakan
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi data gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Membuat pengguna baru
+      tags:
+      - Users
+  /users/{id}:
+    delete:
+      description: Menghapus pengguna berdasarkan ID. Pengguna tidak diperbolehkan
+        menghapus akunnya sendiri.
+      parameters:
+      - description: ID pengguna
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Pengguna berhasil dihapus
+        "400":
+          description: ID pengguna tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki akses atau mencoba menghapus akun sendiri
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Menghapus pengguna
+      tags:
+      - Users
+    get:
+      description: Mengambil detail pengguna berdasarkan ID. Pengguna hanya dapat
+        mengakses data sendiri kecuali memiliki permission user:read:any.
+      parameters:
+      - description: ID pengguna
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detail pengguna berhasil diambil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID pengguna tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki akses ke pengguna
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mendapatkan detail pengguna
+      tags:
+      - Users
+    patch:
+      consumes:
+      - application/json
+      description: Memperbarui satu atau beberapa field pengguna berdasarkan ID. Pengguna
+        hanya dapat mengubah datanya sendiri kecuali memiliki permission user:update:any.
+      parameters:
+      - description: ID pengguna
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Field pengguna yang akan diperbarui
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.PatchUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data pengguna berhasil diperbarui
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID atau body JSON tidak valid atau tidak ada field yang diubah
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki akses
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Username sudah digunakan
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi data gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Memperbarui sebagian data pengguna
+      tags:
+      - Users
+    put:
+      consumes:
+      - application/json
+      description: Mengganti username, email, dan status aktif pengguna berdasarkan
+        ID. Pengguna hanya dapat mengubah datanya sendiri kecuali memiliki permission
+        user:update:any.
+      parameters:
+      - description: ID pengguna
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Data pengguna yang baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.ReplaceUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data pengguna berhasil diganti
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID atau body JSON tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki akses
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Username sudah digunakan
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi data gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mengganti seluruh data pengguna
+      tags:
+      - Users
+  /users/{id}/role:
+    patch:
+      consumes:
+      - application/json
+      description: Mengubah role pengguna berdasarkan ID. Memerlukan permission role:assign
+        dan validasi hak akses.
+      parameters:
+      - description: ID pengguna
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role baru pengguna
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.AssignRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Role pengguna berhasil diubah
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID atau body JSON tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Belum terautentikasi
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Tidak memiliki akses
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Pengguna tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi role gagal
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kesalahan server
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mengubah role pengguna
+      tags:
+      - Users
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    description: 'Masukkan token dengan format: Bearer <token>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

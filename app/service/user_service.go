@@ -1,3 +1,4 @@
+
 package service
 
 import (
@@ -29,6 +30,25 @@ func NewUserService(
 
 // ---------- GET /users ----------
 // Dijaga middleware dengan permission user:list.
+
+// List godoc
+// @Summary Mendapatkan daftar pengguna
+// @Description Mengambil daftar pengguna dengan pencarian, filter status aktif, dan cursor pagination. Mendukung format JSON dan CSV.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Produce text/csv
+// @Param limit query int false "Jumlah data per halaman (default 10, maksimal 100)"
+// @Param search query string false "Kata kunci pencarian pengguna"
+// @Param is_active query bool false "Filter status aktif pengguna"
+// @Param cursor query string false "Cursor untuk mengambil halaman berikutnya"
+// @Success 200 {object} map[string]interface{} "Daftar pengguna berhasil diambil"
+// @Failure 400 {object} map[string]interface{} "Parameter query tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki permission user:list"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/ [get]
 func (s *UserService) List(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -71,6 +91,21 @@ func (s *UserService) List(c *fiber.Ctx) error {
 }
 
 // ---------- GET /users/:id ----------
+
+// Get godoc
+// @Summary Mendapatkan detail pengguna
+// @Description Mengambil detail pengguna berdasarkan ID. Pengguna hanya dapat mengakses data sendiri kecuali memiliki permission user:read:any.
+// @Tags Users
+// @Produce json
+// @Param id path int true "ID pengguna"
+// @Success 200 {object} map[string]interface{} "Detail pengguna berhasil diambil"
+// @Failure 400 {object} map[string]interface{} "ID pengguna tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki akses ke pengguna"
+// @Failure 404 {object} map[string]interface{} "Pengguna tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/{id} [get]
 func (s *UserService) Get(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -99,6 +134,20 @@ func (s *UserService) Get(c *fiber.Ctx) error {
 
 // ---------- POST /users ----------
 // Dijaga middleware dengan permission user:update:any.
+// Create godoc
+// @Summary Membuat pengguna baru
+// @Description Membuat akun pengguna baru dengan role default user.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param request body model.CreateUserRequest true "Data pengguna baru"
+// @Success 201 {object} map[string]interface{} "Pengguna berhasil dibuat"
+// @Failure 400 {object} map[string]interface{} "Body JSON tidak valid"
+// @Failure 409 {object} map[string]interface{} "Username sudah digunakan"
+// @Failure 422 {object} map[string]interface{} "Validasi data gagal"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/ [post]
 func (s *UserService) Create(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -135,6 +184,24 @@ func (s *UserService) Create(c *fiber.Ctx) error {
 		"/api/v1/users/"+strconv.Itoa(newUser.ID))
 }
 
+// Replace godoc
+// @Summary Mengganti seluruh data pengguna
+// @Description Mengganti username, email, dan status aktif pengguna berdasarkan ID. Pengguna hanya dapat mengubah datanya sendiri kecuali memiliki permission user:update:any.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path int true "ID pengguna"
+// @Param request body model.ReplaceUserRequest true "Data pengguna yang baru"
+// @Success 200 {object} map[string]interface{} "Data pengguna berhasil diganti"
+// @Failure 400 {object} map[string]interface{} "ID atau body JSON tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki akses"
+// @Failure 404 {object} map[string]interface{} "Pengguna tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Username sudah digunakan"
+// @Failure 422 {object} map[string]interface{} "Validasi data gagal"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/{id} [put]
 // ---------- PUT /users/:id ----------
 func (s *UserService) Replace(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
@@ -172,6 +239,24 @@ func (s *UserService) Replace(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "user berhasil diganti seluruhnya", result)
 }
 
+// Patch godoc
+// @Summary Memperbarui sebagian data pengguna
+// @Description Memperbarui satu atau beberapa field pengguna berdasarkan ID. Pengguna hanya dapat mengubah datanya sendiri kecuali memiliki permission user:update:any.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path int true "ID pengguna"
+// @Param request body model.PatchUserRequest true "Field pengguna yang akan diperbarui"
+// @Success 200 {object} map[string]interface{} "Data pengguna berhasil diperbarui"
+// @Failure 400 {object} map[string]interface{} "ID atau body JSON tidak valid atau tidak ada field yang diubah"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki akses"
+// @Failure 404 {object} map[string]interface{} "Pengguna tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Username sudah digunakan"
+// @Failure 422 {object} map[string]interface{} "Validasi data gagal"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/{id} [patch]
 // ---------- PATCH /users/:id ----------
 func (s *UserService) Patch(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
@@ -215,6 +300,23 @@ func (s *UserService) Patch(c *fiber.Ctx) error {
 
 // ---------- PATCH /users/:id/role ----------
 // Dijaga middleware dengan permission role:assign.
+// AssignRole godoc
+// @Summary Mengubah role pengguna
+// @Description Mengubah role pengguna berdasarkan ID. Memerlukan permission role:assign dan validasi hak akses.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path int true "ID pengguna"
+// @Param request body model.AssignRoleRequest true "Role baru pengguna"
+// @Success 200 {object} map[string]interface{} "Role pengguna berhasil diubah"
+// @Failure 400 {object} map[string]interface{} "ID atau body JSON tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki akses"
+// @Failure 404 {object} map[string]interface{} "Pengguna tidak ditemukan"
+// @Failure 422 {object} map[string]interface{} "Validasi role gagal"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/{id}/role [patch]
 func (s *UserService) AssignRole(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -245,6 +347,20 @@ func (s *UserService) AssignRole(c *fiber.Ctx) error {
 
 // ---------- DELETE /users/:id ----------
 // Dijaga middleware dengan permission user:delete.
+// Delete godoc
+// @Summary Menghapus pengguna
+// @Description Menghapus pengguna berdasarkan ID. Pengguna tidak diperbolehkan menghapus akunnya sendiri.
+// @Tags Users
+// @Produce json
+// @Param id path int true "ID pengguna"
+// @Success 204 "Pengguna berhasil dihapus"
+// @Failure 400 {object} map[string]interface{} "ID pengguna tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki akses atau mencoba menghapus akun sendiri"
+// @Failure 404 {object} map[string]interface{} "Pengguna tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /users/{id} [delete]
 func (s *UserService) Delete(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()

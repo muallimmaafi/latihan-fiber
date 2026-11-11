@@ -3,3 +3,6 @@ logs/
 dump.rdb
 redeliver.exe
 .env.test
+# Generated files
+coverage
+*.exe

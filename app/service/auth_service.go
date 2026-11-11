@@ -37,6 +37,19 @@ func NewAuthService(
 	}
 }
 
+
+// Register godoc
+// @Summary Registrasi pengguna
+// @Description Mendaftarkan pengguna baru. Role otomatis ditetapkan sebagai user.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body model.RegisterRequest true "Data registrasi pengguna"
+// @Success 201 {object} map[string]interface{} "Pendaftaran berhasil"
+// @Failure 400 {object} map[string]interface{} "Request tidak valid"
+// @Failure 409 {object} map[string]interface{} "Username atau email sudah digunakan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Router /auth/register [post]
 func (s *AuthService) Register(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -75,6 +88,19 @@ func (s *AuthService) Register(c *fiber.Ctx) error {
 		"/api/v1/users/"+strconv.Itoa(newUser.ID))
 }
 
+// Login godoc
+// @Summary Login pengguna
+// @Description Memverifikasi username dan password, kemudian menghasilkan access token dan refresh token.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body model.LoginRequest true "Kredensial login"
+// @Success 200 {object} map[string]interface{} "Login berhasil"
+// @Failure 400 {object} map[string]interface{} "Request tidak valid"
+// @Failure 401 {object} map[string]interface{} "Username atau password salah"
+// @Failure 403 {object} map[string]interface{} "Akun dinonaktifkan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Router /auth/login [post]
 func (s *AuthService) Login(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -115,6 +141,18 @@ func (s *AuthService) Login(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "login berhasil", pair)
 }
 
+// Refresh godoc
+// @Summary Memperbarui token
+// @Description Memperbarui access token dan refresh token menggunakan refresh token yang masih valid. Refresh token lama akan dicabut.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body model.RefreshRequest true "Refresh token"
+// @Success 200 {object} map[string]interface{} "Token berhasil diperbarui"
+// @Failure 400 {object} map[string]interface{} "Request tidak valid"
+// @Failure 401 {object} map[string]interface{} "Refresh token tidak valid atau kedaluwarsa"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Router /auth/refresh [post]
 func (s *AuthService) Refresh(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -160,6 +198,18 @@ func (s *AuthService) Refresh(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "token berhasil diperbarui", pair)
 }
 
+// Logout godoc
+// @Summary Logout pengguna
+// @Description Mengakhiri sesi pengguna dengan mencabut refresh token.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body model.RefreshRequest true "Refresh token yang akan dicabut"
+// @Success 200 {object} map[string]interface{} "Logout berhasil"
+// @Failure 400 {object} map[string]interface{} "Request tidak valid"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /auth/logout [post]
 func (s *AuthService) Logout(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -177,6 +227,16 @@ func (s *AuthService) Logout(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "logout berhasil", nil)
 }
 
+// Me godoc
+// @Summary Mendapatkan profil pengguna
+// @Description Mengambil informasi profil dan daftar permission pengguna yang sedang login.
+// @Tags Authentication
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Profil berhasil diambil"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi atau user tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /auth/me [get]
 func (s *AuthService) Me(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()

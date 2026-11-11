@@ -34,6 +34,16 @@ func NewCourseService(
 }
 
 // ---------- GET /courses ----------
+// List godoc
+// @Summary Mendapatkan daftar kelas
+// @Description Mengambil seluruh daftar kelas yang tersedia.
+// @Tags Courses
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Daftar kelas berhasil diambil"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/ [get]
 func (s *CourseService) List(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -46,6 +56,16 @@ func (s *CourseService) List(c *fiber.Ctx) error {
 }
 
 // ---------- GET /courses/mine ----------
+// Mine godoc
+// @Summary Mendapatkan daftar KRS mahasiswa
+// @Description Mengambil daftar kelas yang diikuti mahasiswa yang sedang login, termasuk total SKS dan batas maksimal SKS.
+// @Tags Courses
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Daftar KRS berhasil diambil"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/mine [get]
 func (s *CourseService) Mine(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -72,6 +92,18 @@ func (s *CourseService) Mine(c *fiber.Ctx) error {
 }
 
 // ---------- GET /courses/:id ----------
+// Get godoc
+// @Summary Mendapatkan detail kelas
+// @Description Mengambil detail kelas berdasarkan ID kelas.
+// @Tags Courses
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Success 200 {object} map[string]interface{} "Detail kelas berhasil diambil"
+// @Failure 400 {object} map[string]interface{} "ID kelas tidak valid"
+// @Failure 404 {object} map[string]interface{} "Kelas tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id} [get]
 func (s *CourseService) Get(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -89,6 +121,22 @@ func (s *CourseService) Get(c *fiber.Ctx) error {
 }
 
 // ---------- PATCH /courses/:id ----------
+// UpdateQuota godoc
+// @Summary Memperbarui kuota kelas
+// @Description Mengubah kuota kelas berdasarkan ID. Kuota baru tidak boleh lebih kecil dari jumlah peserta yang sudah terdaftar.
+// @Tags Courses
+// @Accept json
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Param request body map[string]int true "Kuota baru, contoh: {\"quota\": 40}"
+// @Success 200 {object} map[string]interface{} "Kuota kelas berhasil diperbarui"
+// @Failure 400 {object} map[string]interface{} "ID atau kuota tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki permission course:update"
+// @Failure 404 {object} map[string]interface{} "Kelas tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id} [patch]
 func (s *CourseService) UpdateQuota(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -157,6 +205,20 @@ func (s *CourseService) UpdateQuota(c *fiber.Ctx) error {
 }
 
 // ---------- POST /courses/:id/enroll ----------
+// Enroll godoc
+// @Summary Mendaftar ke kelas
+// @Description Mendaftarkan mahasiswa yang sedang login ke kelas berdasarkan ID. Sistem memeriksa kuota kelas dan batas maksimal SKS.
+// @Tags Courses
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Success 201 {object} map[string]interface{} "Berhasil mendaftar kelas"
+// @Failure 400 {object} map[string]interface{} "ID kelas tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 404 {object} map[string]interface{} "Kelas tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Kuota penuh, sudah terdaftar, atau batas maksimal SKS terlampaui"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id}/enroll [post]
 func (s *CourseService) Enroll(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -222,6 +284,20 @@ func (s *CourseService) Enroll(c *fiber.Ctx) error {
 }
 
 // ---------- DELETE /courses/:id/enroll ----------
+// Drop godoc
+// @Summary Membatalkan pendaftaran kelas
+// @Description Menghapus pendaftaran kelas mahasiswa yang sedang login dan memperbarui jumlah peserta.
+// @Tags Courses
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Success 204 "Pendaftaran kelas berhasil dibatalkan"
+// @Failure 400 {object} map[string]interface{} "ID kelas tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 404 {object} map[string]interface{} "Kelas tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Mahasiswa tidak terdaftar di kelas"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id}/enroll [delete]
 func (s *CourseService) Drop(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()

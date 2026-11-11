@@ -1,3 +1,15 @@
+// @title Praktikum Backend Lanjut API
+// @version 1.0
+// @description Dokumentasi REST API untuk sistem pengelolaan mahasiswa, kelas, KRS, ulasan, dan notifikasi.
+// @host localhost:3000
+// @BasePath /api/v1
+// @schemes http
+//
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Masukkan token dengan format: Bearer <token>
+
 package main
 
 import (

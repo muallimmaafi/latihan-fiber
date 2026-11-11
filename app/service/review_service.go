@@ -29,6 +29,23 @@ func NewReviewService(
 }
 
 // ---------- POST /courses/:id/reviews ----------
+// Create godoc
+// @Summary Membuat ulasan kelas
+// @Description Membuat ulasan untuk kelas yang diikuti oleh mahasiswa yang sedang login.
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Param request body model.CreateReviewRequest true "Data ulasan"
+// @Success 201 {object} map[string]interface{} "Ulasan berhasil disimpan"
+// @Failure 400 {object} map[string]interface{} "ID kelas atau body tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Mahasiswa bukan peserta kelas"
+// @Failure 404 {object} map[string]interface{} "Kelas tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Mahasiswa sudah pernah memberikan ulasan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id}/reviews [post]
 func (s *ReviewService) Create(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -79,6 +96,21 @@ func (s *ReviewService) Create(c *fiber.Ctx) error {
 }
 
 // ---------- GET /courses/:id/reviews ----------
+// ListByCourse godoc
+// @Summary Mendapatkan daftar ulasan kelas
+// @Description Mengambil daftar ulasan berdasarkan ID kelas dengan dukungan filter tag dan pagination.
+// @Tags Reviews
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Param tag query string false "Filter berdasarkan tag ulasan"
+// @Param before query string false "ID ulasan sebagai penanda pagination"
+// @Param limit query int false "Jumlah ulasan per halaman (1-50)" default(10)
+// @Success 200 {object} map[string]interface{} "Daftar ulasan berhasil diambil"
+// @Failure 400 {object} map[string]interface{} "ID kelas tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id}/reviews [get]
 func (s *ReviewService) ListByCourse(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -126,6 +158,19 @@ func (s *ReviewService) ListByCourse(c *fiber.Ctx) error {
 }
 
 // ---------- GET /courses/:id/reviews/summary ----------
+// Summary godoc
+// @Summary Mendapatkan ringkasan ulasan kelas
+// @Description Mengambil ringkasan ulasan berdasarkan ID kelas, termasuk informasi rating.
+// @Tags Reviews
+// @Produce json
+// @Param id path int true "ID kelas"
+// @Success 200 {object} map[string]interface{} "Ringkasan ulasan berhasil diambil"
+// @Failure 400 {object} map[string]interface{} "ID kelas tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 404 {object} map[string]interface{} "Kelas tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /courses/{id}/reviews/summary [get]
 func (s *ReviewService) Summary(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -146,6 +191,19 @@ func (s *ReviewService) Summary(c *fiber.Ctx) error {
 }
 
 // ---------- GET /reviews/:id ----------
+// Get godoc
+// @Summary Mendapatkan detail ulasan
+// @Description Mengambil detail ulasan berdasarkan ID ulasan.
+// @Tags Reviews
+// @Produce json
+// @Param id path string true "ID ulasan"
+// @Success 200 {object} map[string]interface{} "Ulasan berhasil ditemukan"
+// @Failure 400 {object} map[string]interface{} "ID ulasan tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 404 {object} map[string]interface{} "Ulasan tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /reviews/{id} [get]
 func (s *ReviewService) Get(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -158,6 +216,23 @@ func (s *ReviewService) Get(c *fiber.Ctx) error {
 }
 
 // ---------- PATCH /reviews/:id ----------
+// Update godoc
+// @Summary Memperbarui ulasan
+// @Description Memperbarui rating, komentar, atau tag pada ulasan milik mahasiswa yang sedang login.
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path string true "ID ulasan"
+// @Param request body model.UpdateReviewRequest true "Data ulasan yang akan diperbarui"
+// @Success 200 {object} map[string]interface{} "Ulasan berhasil diperbarui"
+// @Failure 400 {object} map[string]interface{} "ID atau body tidak valid, atau tidak ada field yang diubah"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Bukan pemilik ulasan"
+// @Failure 404 {object} map[string]interface{} "Ulasan tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Konflik pembaruan ulasan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /reviews/{id} [patch]
 func (s *ReviewService) Update(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -197,6 +272,20 @@ func (s *ReviewService) Update(c *fiber.Ctx) error {
 // ---------- DELETE /reviews/:id ----------
 // Pemilik boleh menghapus ulasannya sendiri; pemegang permission
 // review:moderate boleh menghapus ulasan siapa pun.
+// Delete godoc
+// @Summary Menghapus ulasan
+// @Description Menghapus ulasan milik sendiri atau ulasan pengguna lain jika memiliki permission review:moderate.
+// @Tags Reviews
+// @Produce json
+// @Param id path string true "ID ulasan"
+// @Success 204 "Ulasan berhasil dihapus"
+// @Failure 400 {object} map[string]interface{} "ID ulasan tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 403 {object} map[string]interface{} "Tidak memiliki izin menghapus ulasan"
+// @Failure 404 {object} map[string]interface{} "Ulasan tidak ditemukan"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /reviews/{id} [delete]
 func (s *ReviewService) Delete(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -214,6 +303,22 @@ func (s *ReviewService) Delete(c *fiber.Ctx) error {
 }
 
 // ---------- POST /reviews/:id/replies ----------
+// Reply godoc
+// @Summary Menambahkan balasan ulasan
+// @Description Menambahkan balasan pada ulasan berdasarkan ID ulasan.
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path string true "ID ulasan"
+// @Param request body model.ReplyRequest true "Isi balasan"
+// @Success 201 {object} map[string]interface{} "Balasan berhasil ditambahkan"
+// @Failure 400 {object} map[string]interface{} "ID ulasan atau body tidak valid"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 404 {object} map[string]interface{} "Ulasan tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Batas jumlah balasan tercapai"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /reviews/{id}/replies [post]
 func (s *ReviewService) Reply(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -242,6 +347,19 @@ func (s *ReviewService) Reply(c *fiber.Ctx) error {
 }
 
 // ---------- POST /reviews/:id/helpful ----------
+// MarkHelpful godoc
+// @Summary Memberikan penilaian helpful pada ulasan
+// @Description Memberikan penilaian bahwa ulasan bermanfaat. Setiap pengguna hanya dapat memberikan satu penilaian pada ulasan yang sama.
+// @Tags Reviews
+// @Produce json
+// @Param id path string true "ID ulasan"
+// @Success 200 {object} map[string]interface{} "Penilaian berhasil diberikan"
+// @Failure 401 {object} map[string]interface{} "Belum terautentikasi"
+// @Failure 404 {object} map[string]interface{} "Ulasan tidak ditemukan"
+// @Failure 409 {object} map[string]interface{} "Pengguna sudah memberikan penilaian atau mencoba menilai ulasannya sendiri"
+// @Failure 500 {object} map[string]interface{} "Kesalahan server"
+// @Security BearerAuth
+// @Router /reviews/{id}/helpful [post]
 func (s *ReviewService) MarkHelpful(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()

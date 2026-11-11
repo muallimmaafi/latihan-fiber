@@ -68,6 +68,13 @@ func Register(app *fiber.App, deps Dependencies) {
 	users.Put("/:id", deps.UserService.Replace)
 	users.Patch("/:id", deps.UserService.Patch)
 
+	// --- perpindahan kelas ---
+	enrollments := api.Group("/enrollments",
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT),
+	)
+	enrollments.Post("/swap", deps.CourseService.Swap)
+
 	// --- kelas dan KRS ---
 	courses := api.Group("/courses",
 		middleware.RequireJSON,
@@ -118,8 +125,14 @@ func Register(app *fiber.App, deps Dependencies) {
 	)
 }
 
-// healthCheck kini memeriksa DUA database. Aplikasi dianggap sehat hanya
-// bila keduanya dapat dihubungi, dan pesan kegagalannya menyebut yang mana.
+// HealthCheck godoc
+// @Summary Health Check
+// @Description Memeriksa status server, PostgreSQL, dan MongoDB.
+// @Tags Health
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Server dan database berjalan"
+// @Failure 503 {object} map[string]interface{} "Database tidak tersedia"
+// @Router /health [get]
 func healthCheck(pool *pgxpool.Pool, mongoClient *mongo.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)

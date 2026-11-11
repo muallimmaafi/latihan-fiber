@@ -1,0 +1,103 @@
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: latihan-fiber-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: latihan_fiber
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD belum diatur}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d latihan_fiber"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:8
+    container_name: latihan-fiber-mongodb
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: latihan-fiber-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: latihan-fiber:1.0
+    container_name: latihan-fiber-api
+    restart: unless-stopped
+    command: ["-role=api"]
+    ports:
+      - "3000:3000"
+    environment:
+      APP_PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: latihan_fiber
+      DB_SSLMODE: disable
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: latihan_fiber
+      REDIS_ADDR: redis:6379
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+
+  worker:
+    image: latihan-fiber:1.0
+    container_name: latihan-fiber-worker
+    restart: unless-stopped
+    command: ["-role=worker"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: latihan_fiber
+      DB_SSLMODE: disable
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: latihan_fiber
+      REDIS_ADDR: redis:6379
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:

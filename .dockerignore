@@ -1,0 +1,29 @@
+
+# Environment dan file rahasia
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# File executable hasil build lokal
+*.exe
+latihan-fiber
+
+# Cache dan file sementara
+.gotmp/
+coverage
+coverage.out
+dump.rdb
+
+# Log lokal
+logs/*
+!logs/.gitkeep
+
+# File editor dan OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
